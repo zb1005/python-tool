@@ -88,41 +88,45 @@ def process_approval_data():
     holidays = [datetime.strptime(str(date).strip(), '%Y-%m-%d %H:%M:%S').date() for date in holiday_df['方太假期']]
     
     # 4. 计算自然时长和工作时长
-    base_df['单个节点审批到达时间（格式如：2024-09-26 15:20:59，精确到秒）'] = pd.to_datetime(base_df['单个节点审批到达时间（格式如：2024-09-26 15:20:59，精确到秒）'])
-    base_df['单个节点审批结束时间（格式如：2024-09-26 15:20:59，精确到秒）'] = pd.to_datetime(base_df['单个节点审批结束时间（格式如：2024-09-26 15:20:59，精确到秒）'])
+    base_df['单个节点审批到达时间'] = pd.to_datetime(base_df['单个节点审批到达时间'])
+    base_df['单个节点审批结束时间'] = pd.to_datetime(base_df['单个节点审批结束时间'])
     
-    base_df['该节点审批自然时长（单位：天）'] = (base_df['单个节点审批结束时间（格式如：2024-09-26 15:20:59，精确到秒）'] - base_df['单个节点审批到达时间（格式如：2024-09-26 15:20:59，精确到秒）']).dt.total_seconds() / (24 * 3600)
+    base_df['该节点审批自然时长'] = (base_df['单个节点审批结束时间'] - base_df['单个节点审批到达时间']).dt.total_seconds() / (24 * 3600)
     
-    base_df['该节点审批工作时长（单位：天）——剔除节假日及周末，按24小时计算'] = base_df.apply(
+    base_df['该节点审批工作时长'] = base_df.apply(
         lambda row: calculate_work_duration(
-            row['单个节点审批到达时间（格式如：2024-09-26 15:20:59，精确到秒）'], 
-            row['单个节点审批结束时间（格式如：2024-09-26 15:20:59，精确到秒）'], 
+            row['单个节点审批到达时间'], 
+            row['单个节点审批结束时间'], 
             holidays
         ), 
         axis=1
     )
     
     # 5. 规整工作时长（保留2位小数），小于0时设为0
-    base_df['该节点审批工作时长_规整'] = base_df['该节点审批工作时长（单位：天）——剔除节假日及周末，按24小时计算'].apply(lambda x: max(0, round(x, 2)))
+    base_df['该节点审批工作时长_规整'] = base_df['该节点审批工作时长'].apply(lambda x: max(0, round(x, 2)))
     
-    # 6. 创建流程名称与建议时长的对照关系
+    #6.判断节点审批时效情况，按照1，2，3天分为3级
+    base_df['节点审批时效情况：≤1；1<X≤2；2<X≤3；>3'] = base_df['该节点审批工作时长_规整'].apply(
+        lambda x: '≤1' if x <= 1 else ('1<X≤2' if 1 < x <= 2 else ('2<X≤3' if 2 < x <= 3 else '>3'))
+    )
+
+    # 7. 创建流程名称与建议时长的对照关系
     node_duration_map = dict(zip(
         special_node_df['流程名称'],
         special_node_df['建议合理时长（天）']
     ))
     
-    # 7. 匹配节点合理审批时长，默认值为1
-    base_df['节点合理审批时长（天）'] = base_df['流程名称'].map(lambda x: node_duration_map.get(x, 1))
+    # 8. 匹配节点合理审批时长，默认值为1
+    base_df['节点审批时长'] = base_df['流程名称'].map(lambda x: node_duration_map.get(x, 1))
 
-    # 8. 计算节点审批延期时长
-    base_df['节点审批延期时长（天）'] = base_df['该节点审批工作时长（单位：天）——剔除节假日及周末，按24小时计算'] - base_df['节点合理审批时长（天）']
+    # 9. 计算节点审批延期时长
+    base_df['节点审批延期时长（天）'] = base_df['该节点审批工作时长'] - base_df['节点审批时长']
     base_df['节点审批延期时长（天）'] = base_df['节点审批延期时长（天）'].apply(lambda x: max(0, round(x, 2)))
-    # 9. 判断节点审批时效情况，如果小于等于0则显示<=1，否则显示>1
-    base_df['节点审批时效情况（≤1；＞1）'] = base_df['节点审批延期时长（天）'].apply(lambda x: '<=1' if x <= 0 else '>1')
+    # 10. 判断节点审批延期时长情况，按照1，2，3天分为3级
+    base_df['延期时长情况：≤1；1<X≤2；2<X≤3；>3'] = base_df['节点审批延期时长（天）'].apply(
+        lambda x: '≤1' if x <= 1 else ('1<X≤2' if 1 < x <= 2 else ('2<X≤3' if 2 < x <= 3 else '>3'))
+    )
 
-    # 10. 判断节点审批时效是否大于3天
-    base_df['节点审批时效是否大于3天'] = base_df['该节点审批工作时长（单位：天）——剔除节假日及周末，按24小时计算'].apply(lambda x: 'Y' if x > 3 else 'N')
-    
     # 返回处理结果
     return {
         'merged_data': base_df,

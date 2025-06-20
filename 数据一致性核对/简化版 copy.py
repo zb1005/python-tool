@@ -118,9 +118,10 @@ def simple_compare(source_path, target_path, key_columns, output_path):
 # 使用示例
 if __name__ == "__main__":
 
-    SOURCE_FILE = r"C:\Users\zhangbon\Desktop\MDM-CEM物料20250605.XLSX"
-    TARGET_FILE = r"C:\Users\zhangbon\Desktop\CEM物料_20250609.xlsx"
-    KEY_COLUMNS = ["物料编码"]  # 主键列
+    SOURCE_FILE = r"C:\Users\zhangbon\Desktop\MDM-MBOM数据核对表-20250618.xlsx"
+    TARGET_FILE = r"C:\Users\zhangbon\Desktop\ERP-MBOM数据核对表-20250618.xlsx"
+    KEY_COLUMNS = ["工厂", "父级物料编码","项目号","子级物料编码","更改号自","更改号至"]  # 主键列
+
     # KEY_COLUMNS = ["工厂", "物料编码","组件"]
-    OUTPUT_FILE = r"C:\Users\zhangbon\Desktop\EBOM是源--核对结果.xlsx"
+    OUTPUT_FILE = r"C:\Users\zhangbon\Desktop\核对结果.xlsx"
     simple_compare(SOURCE_FILE, TARGET_FILE, KEY_COLUMNS, OUTPUT_FILE)

@@ -74,7 +74,7 @@ class SimpleComparisonWorker(QThread):
         # 获取主键集合和共同列
         source_keys = set(source_dict.keys())
         target_keys = set(target_dict.keys())
-        common_columns = [col for col in source_df.columns if col in target_df.columns and col != '_composite_key']
+        common_columns = [col for col in target_df.columns if col in source_df.columns and col != '_composite_key']
         
         results = []
 

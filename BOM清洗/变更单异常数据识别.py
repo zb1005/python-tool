@@ -47,28 +47,63 @@ def analyze_upgrades(grouped_data):
     diff_records = []
     
     for _, group in grouped_data:
-        valid_group = group.dropna(subset=['版本顺序']).sort_values('版本顺序')
+        # 按工厂、父级物料编码、子级物料编码、计数器升序排序
+        valid_group = group.dropna(subset=['版本顺序', '子级前12位', '子级最后一位'])
+        valid_group = valid_group.sort_values(by=['工厂', '父级物料编码', '子级物料编码', '计数器'])
+        
         if len(valid_group) >= 2:
-            version_diff = valid_group['版本顺序'].diff().dropna()
-            is_continuous = (version_diff == 1).all()
-            
-            if is_continuous:
-                upgrade_records.append(valid_group)
-            else:
-                non_continuous_records.append(valid_group)
-            
-            # 检查更改号连续性
             for i in range(1, len(valid_group)):
                 prev, current = valid_group.iloc[i-1], valid_group.iloc[i]
-                if str(prev['更改号至']).strip() != str(current['更改号自']).strip():
-                    diff_records.append({
-                        '工厂': prev['工厂'],
-                        '父级物料编码': prev['父级物料编码'],
-                        '旧版子级物料': prev['子级物料编码'],
-                        '新版子级物料': current['子级物料编码'],
-                        '旧版更改号至': prev['更改号至'],
-                        '新版更改号自': current['更改号自']
-                    })
+                
+                # 检查子级物料前12位是否相同
+                if prev['子级前12位'] == current['子级前12位']:
+                    # 最后一位相同的情况
+                    if prev['子级最后一位'] == current['子级最后一位']:
+                        # 仅检查更改号连续性
+                        if str(prev['更改号至']).strip() != str(current['更改号自']).strip():
+                            diff_records.append({
+                                '工厂': prev['工厂'],
+                                '父级物料编码': prev['父级物料编码'],
+                                '旧版子级物料': prev['子级物料编码'],
+                                '新版子级物料': current['子级物料编码'],
+                                '旧版更改号至': prev['更改号至'],
+                                '新版更改号自': current['更改号自'],
+                                '差异类型': '同版本更改号不匹配'
+                            })
+                    # 最后一位不同的情况
+                    else:
+                        # 检查是否连续升版
+                        version_diff = current['版本顺序'] - prev['版本顺序']
+                        is_continuous = (version_diff == 1)
+                        
+                        # 检查更改号连续性
+                        change_id_match = (str(prev['更改号至']).strip() == str(current['更改号自']).strip())
+                        
+                        # 记录升版类型
+                        if is_continuous:
+                            if not change_id_match:
+                                diff_records.append({
+                                    '工厂': prev['工厂'],
+                                    '父级物料编码': prev['父级物料编码'],
+                                    '旧版子级物料': prev['子级物料编码'],
+                                    '新版子级物料': current['子级物料编码'],
+                                    '旧版更改号至': prev['更改号至'],
+                                    '新版更改号自': current['更改号自'],
+                                    '差异类型': '连续升版更改号不匹配'
+                                })
+                        else:
+                            non_continuous_records.append(pd.concat([prev.to_frame().T, current.to_frame().T]))
+                            if not change_id_match:
+                                diff_records.append({
+                                    '工厂': prev['工厂'],
+                                    '父级物料编码': prev['父级物料编码'],
+                                    '旧版子级物料': prev['子级物料编码'],
+                                    '新版子级物料': current['子级物料编码'],
+                                    '旧版更改号至': prev['更改号至'],
+                                    '新版更改号自': current['更改号自'],
+                                    '差异类型': '非连续升版更改号不匹配'
+                                })
+
     
     return (
         pd.concat(upgrade_records) if upgrade_records else None,
@@ -81,11 +116,11 @@ def save_results(continuous_df, non_continuous_df, diff_df, output_path):
     """保存分析结果到Excel文件"""
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         if continuous_df is not None:
-            continuous_df.to_excel(writer, sheet_name='升版数据', index=False)
+            continuous_df.to_excel(writer, sheet_name='变更数据', index=False)
         if non_continuous_df is not None:
             non_continuous_df.to_excel(writer, sheet_name='非连续升版数据', index=False)
         if diff_df is not None:
-            diff_df.to_excel(writer, sheet_name='升版差异数据', index=False)
+            diff_df.to_excel(writer, sheet_name='差异数据', index=False)
     return output_path
 
 # 主函数
@@ -94,7 +129,7 @@ def main(input_file_path=r"C:\Users\zhangbon\Desktop\PLM-MBOM数据核对表-202
     # 加载数据
     raw_data = load_excel(input_file_path)
     relation_data = load_excel(RELATION_FILE_PATH)
-    
+    print("数据加载完成")
     # 数据处理管道
     filtered_data = filter_empty_change_numbers(raw_data)
     match_ecn = create_ecn_matcher(relation_data)

@@ -120,10 +120,10 @@ def process_approval_data():
     base_df['节点审批时长'] = base_df['流程名称'].map(lambda x: node_duration_map.get(x, 1))
 
     # 9. 计算节点审批延期时长
-    base_df['节点审批延期时长（天）'] = base_df['该节点审批工作时长'] - base_df['节点审批时长']
-    base_df['节点审批延期时长（天）'] = base_df['节点审批延期时长（天）'].apply(lambda x: max(0, round(x, 2)))
+    base_df['节点审批延期时长(实际工作时长-节点审批时长）'] = base_df['该节点审批工作时长'] - base_df['节点审批时长']
+    base_df['节点审批延期时长(实际工作时长-节点审批时长）'] = base_df['节点审批延期时长(实际工作时长-节点审批时长）'].apply(lambda x: max(0, round(x, 2)))
     # 10. 判断节点审批延期时长情况，按照1，2，3天分为3级
-    base_df['延期时长情况：≤1；1<X≤2；2<X≤3；>3'] = base_df['节点审批延期时长（天）'].apply(
+    base_df['延期时长情况：≤1；1<X≤2；2<X≤3；>3'] = base_df['节点审批延期时长(实际工作时长-节点审批时长）'].apply(
         lambda x: '≤1' if x <= 1 else ('1<X≤2' if 1 < x <= 2 else ('2<X≤3' if 2 < x <= 3 else '>3'))
     )
 

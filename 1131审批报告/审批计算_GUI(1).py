@@ -1,184 +1,199 @@
-import tkinter as tk
-from tkinter import ttk, filedialog
 import pandas as pd
+from datetime import datetime, timedelta
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import os
 
-class ApprovalAnalysisApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("审批时效分析工具")
-        
-        # 文件选择框架
-        self.file_frame = ttk.LabelFrame(root, text="文件选择")
-        self.file_frame.pack(padx=10, pady=10, fill="x")
-        
-        # 4个文件选择入口
-        self.file_paths = {}
-        self.file_labels = ["主表", "在职人员清单", "假期表", "特殊节点表"]
-        
-        for i, label in enumerate(self.file_labels):
-            frame = ttk.Frame(self.file_frame)
-            frame.pack(fill="x", pady=2)
-            
-            ttk.Label(frame, text=f"{label}:").pack(side="left")
-            ttk.Entry(frame, width=40).pack(side="left", padx=5)
-            ttk.Button(frame, text="浏览", command=lambda idx=i: self.select_file(idx)).pack(side="left")
-            
-            self.file_paths[i] = {"label": label, "entry": frame.children["!entry"], "data": None}
-        
-        # Sheet预览框架
-        self.sheet_frame = ttk.LabelFrame(root, text="Sheet预览")
-        self.sheet_frame.pack(padx=10, pady=10, fill="x")
-        
-        self.sheet_combos = []
-        for i in range(4):
-            frame = ttk.Frame(self.sheet_frame)
-            frame.pack(fill="x", pady=2)
-            
-            ttk.Label(frame, text=f"{self.file_labels[i]} Sheet:").pack(side="left")
-            combo = ttk.Combobox(frame, state="readonly")
-            combo.pack(side="left", padx=5, fill="x", expand=True)
-            combo.bind("<<ComboboxSelected>>", lambda e, idx=i: self.load_columns(idx))
-            self.sheet_combos.append(combo)
-        
-        # 列名预览框架
-        self.column_frame = ttk.LabelFrame(root, text="列名预览")
-        self.column_frame.pack(padx=10, pady=10, fill="both", expand=True)
-        
-        self.column_text = tk.Text(self.column_frame, height=10)
-        self.column_text.pack(fill="both", expand=True)
-        
-        # 进度条
-        self.progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
-        self.progress.pack(pady=10)
-        
-        # 输出路径选择
-        self.output_frame = ttk.Frame(root)
-        self.output_frame.pack(fill="x", padx=10, pady=5)
-        
-        ttk.Label(self.output_frame, text="输出路径:").pack(side="left")
-        self.output_entry = ttk.Entry(self.output_frame, width=40)
-        self.output_entry.pack(side="left", padx=5)
-        ttk.Button(self.output_frame, text="浏览", command=self.select_output_path).pack(side="left")
-        
-        # 分析按钮
-        ttk.Button(root, text="开始分析", command=self.analyze).pack(pady=10)
+def is_workday(date, holidays):
+    # 判断是否为工作日（非周末且非节假日）
+    return date.weekday() < 5 and date not in holidays
+
+def calculate_work_duration(start_time, end_time, holidays):
+    # 计算工作时间（排除节假日和周末）
+    current = start_time
+    work_duration = timedelta()
     
-    def select_file(self, idx):
-        filepath = filedialog.askopenfilename(filetypes=[("Excel文件", "*.xlsx")])
-        if filepath:
-            self.file_paths[idx]["entry"].delete(0, tk.END)
-            self.file_paths[idx]["entry"].insert(0, filepath)
-            self.load_sheets(idx, filepath)
+    while current < end_time:
+        next_day = (current + timedelta(days=1)).replace(hour=0, minute=0, second=0)
+        if is_workday(current.date(), holidays):
+            work_duration += min(next_day, end_time) - current
+        current = next_day
     
-    def load_sheets(self, idx, filepath):
-        try:
-            self.progress["value"] = 25 * (idx + 1)
-            self.root.update()
-            
-            xls = pd.ExcelFile(filepath)
-            sheets = xls.sheet_names
-            self.sheet_combos[idx]["values"] = sheets
-            self.sheet_combos[idx].current(0)
-            
-            # 自动加载第一个sheet的列名
-            self.load_columns(idx)
-        except Exception as e:
-            self.column_text.insert(tk.END, f"加载{self.file_labels[idx]}失败: {str(e)}\n")
+    return work_duration.total_seconds() / (24 * 3600)  # 转换为天数
+
+def generate_report_1(merged_data):
+    """生成第一个汇总报告：按审批人所在体系分组统计"""
+    # 确保分组列存在
+    if '审批人所在体系' not in merged_data.columns:
+        raise ValueError("数据中缺少'审批人所在体系'列")
     
-    def load_columns(self, idx):
-        filepath = self.file_paths[idx]["entry"].get()
-        sheet = self.sheet_combos[idx].get()
-        
-        if filepath and sheet:
-            try:
-                df = pd.read_excel(filepath, sheet_name=sheet, nrows=1)
-                self.column_text.insert(tk.END, f"{self.file_labels[idx]} - {sheet} 列名:\n")
-                self.column_text.insert(tk.END, ", ".join(df.columns) + "\n\n")
-            except Exception as e:
-                self.column_text.insert(tk.END, f"加载列名失败: {str(e)}\n")
+    # 确保所有需要的列都存在
+    required_columns = ['流程名称', '节点审批时效情况（≤1；＞1）', 
+                       '节点审批时效是否大于3天', '该节点审批自然时长（单位：天）',
+                       '该节点审批工作时长（单位：天）——剔除节假日及周末，按24小时计算']
+    missing_cols = [col for col in required_columns if col not in merged_data.columns]
+    if missing_cols:
+        raise ValueError(f"数据中缺少必要的列: {missing_cols}")
     
-    def select_output_path(self):
-        output_path = filedialog.asksaveasfilename(
+    report = merged_data.groupby('审批人所在体系').agg(
+        **{
+            'A-审批总次数': ('流程名称', 'count'),
+            'B-单个节点审批时长≤1天的节点数': ('节点审批时效情况（≤1；＞1）', lambda x: (x == '<=1').sum()),
+            'D-单个节点审批时长＞1天的节点数': ('节点审批时效情况（≤1；＞1）', lambda x: (x == '>1').sum()),
+            'E-其中：单个节点审批时长>3天的节点数': ('节点审批时效是否大于3天', lambda x: (x == 'Y').sum()),
+            'G-单个节点平均审批时长（自然日）': ('该节点审批自然时长（单位：天）', 'mean'),
+            'H-单个节点平均审批时长（工作日）': ('该节点审批工作时长（单位：天）——剔除节假日及周末，按24小时计算', 'mean')
+        }
+    )
+    
+    # 计算比例列
+    report['C-单个节点审批时长≤1天的节点比例'] = report['B-单个节点审批时长≤1天的节点数'] / report['A-审批总次数']
+    report['F-其中：单个节点审批时长>3天的节点比例'] = report['E-其中：单个节点审批时长>3天的节点数'] / report['A-审批总次数']
+    
+    # 重置索引，将'审批人所在体系'变为普通列
+    report = report.reset_index()
+    
+    # 确保列顺序正确
+    report = report[[
+        '审批人所在体系',
+        'A-审批总次数',
+        'B-单个节点审批时长≤1天的节点数',
+        'C-单个节点审批时长≤1天的节点比例',
+        'D-单个节点审批时长＞1天的节点数',
+        'E-其中：单个节点审批时长>3天的节点数',
+        'F-其中：单个节点审批时长>3天的节点比例',
+        'G-单个节点平均审批时长（自然日）',
+        'H-单个节点平均审批时长（工作日）'
+    ]]
+    
+    # 保留2位小数
+    report = report.round(2)
+    
+    return report
+
+def process_approval_data(input_file_path):
+    # 读取四个Excel文件
+    base_df = pd.read_excel(input_file_path, sheet_name="主表", engine='openpyxl')
+    staff_df = pd.read_excel(input_file_path, sheet_name="附1 最新在职人员及所属组织清单", engine='openpyxl')
+    holiday_df = pd.read_excel(input_file_path, sheet_name="附2 方太春节假期", engine='openpyxl')
+    special_node_df = pd.read_excel(input_file_path, sheet_name="附3特殊节点合理时长", engine='openpyxl')
+    
+    # 1. 先建立人员信息的映射字典
+    staff_mapping = staff_df.set_index('员工工号').to_dict('index')
+    print(staff_mapping)
+    
+    # 2. 将人员信息映射到基础表
+    base_df['审批人姓名'] = base_df['审批人工号'].map(lambda x: staff_mapping.get(x, {}).get('姓名'))
+    base_df['审批人所在体系'] = base_df['审批人工号'].map(lambda x: staff_mapping.get(x, {}).get('审批人所在体系'))
+    base_df['审批人所在一级组织'] = base_df['审批人工号'].map(lambda x: staff_mapping.get(x, {}).get('一级组织名称'))
+    
+    # 3. 处理假期日期
+    holidays = [datetime.strptime(str(date).strip(), '%Y-%m-%d %H:%M:%S').date() for date in holiday_df['方太假期']]
+    
+    # 4. 计算自然时长和工作时长
+    base_df['单个节点审批到达时间'] = pd.to_datetime(base_df['单个节点审批到达时间'])
+    base_df['单个节点审批结束时间'] = pd.to_datetime(base_df['单个节点审批结束时间'])
+    
+    base_df['该节点审批自然时长'] = (base_df['单个节点审批结束时间'] - base_df['单个节点审批到达时间']).dt.total_seconds() / (24 * 3600)
+    
+    base_df['该节点审批工作时长'] = base_df.apply(
+        lambda row: calculate_work_duration(
+            row['单个节点审批到达时间'], 
+            row['单个节点审批结束时间'], 
+            holidays
+        ), 
+        axis=1
+    )
+    
+    # 5. 规整工作时长（保留2位小数），小于0时设为0
+    base_df['该节点审批工作时长_规整'] = base_df['该节点审批工作时长'].apply(lambda x: max(0, round(x, 2)))
+    
+    #6.判断节点审批时效情况，按照1，2，3天分为3级
+    base_df['节点审批时效情况：≤1；1<X≤2；2<X≤3；>3'] = base_df['该节点审批工作时长_规整'].apply(
+        lambda x: '≤1' if x <= 1 else ('1<X≤2' if 1 < x <= 2 else ('2<X≤3' if 2 < x <= 3 else '>3'))
+    )
+
+    # 7. 创建流程名称与建议时长的对照关系
+    node_duration_map = dict(zip(
+        special_node_df['流程名称'],
+        special_node_df['建议合理时长（天）']
+    ))
+    
+    # 8. 匹配节点合理审批时长，默认值为1
+    base_df['节点审批时长'] = base_df['流程名称'].map(lambda x: node_duration_map.get(x, 1))
+
+    # 9. 计算节点审批延期时长
+    base_df['节点审批延期时长(实际工作时长-节点审批时长）'] = base_df['该节点审批工作时长'] - base_df['节点审批时长']
+    base_df['节点审批延期时长(实际工作时长-节点审批时长）'] = base_df['节点审批延期时长(实际工作时长-节点审批时长）'].apply(lambda x: max(0, round(x, 2)))
+    # 10. 判断节点审批延期时长情况，按照1，2，3天分为3级
+    base_df['延期时长情况：≤1；1<X≤2；2<X≤3；>3'] = base_df['节点审批延期时长(实际工作时长-节点审批时长）'].apply(
+        lambda x: '≤1' if x <= 1 else ('1<X≤2' if 1 < x <= 2 else ('2<X≤3' if 2 < x <= 3 else '>3'))
+    )
+
+    # 返回处理结果
+    return {
+        'merged_data': base_df,
+        'holiday_dates': holidays,
+        'node_duration_map': node_duration_map
+    }
+
+def select_input_file():
+    file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+    if file_path:
+        input_entry.delete(0, tk.END)
+        input_entry.insert(0, file_path)
+
+def run_processing():
+    input_file = input_entry.get()
+    if not input_file:
+        messagebox.showerror("错误", "请选择输入文件")
+        return
+    
+    try:
+        result = process_approval_data(input_file)
+        output_file = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
-            filetypes=[("Excel文件", "*.xlsx")],
-            title="选择输出文件路径"
+            filetypes=[("Excel files", "*.xlsx")],
+            initialfile="审批结果.xlsx"
         )
-        if output_path:
-            self.output_entry.delete(0, tk.END)
-            self.output_entry.insert(0, output_path)
-    
-    def analyze(self):
-        output_path = self.output_entry.get()
-        if not output_path:
-            self.column_text.insert(tk.END, "请先选择输出文件路径！\n")
-            return
-            
-        try:
-            # 获取所有输入文件路径
-            main_file = self.file_paths[0]["entry"].get()
-            employee_file = self.file_paths[1]["entry"].get()
-            leave_file = self.file_paths[2]["entry"].get()
-            special_file = self.file_paths[3]["entry"].get()
-            
-            # 获取各文件的sheet名称
-            main_sheet = self.sheet_combos[0].get()
-            employee_sheet = self.sheet_combos[1].get()
-            leave_sheet = self.sheet_combos[2].get()
-            special_sheet = self.sheet_combos[3].get()
-            
-            # 加载所有数据
-            self.progress["value"] = 25
-            self.root.update()
-            main_df = pd.read_excel(main_file, sheet_name=main_sheet)
-            
-            self.progress["value"] = 50
-            self.root.update()
-            employee_df = pd.read_excel(employee_file, sheet_name=employee_sheet)
-            
-            self.progress["value"] = 75
-            self.root.update()
-            leave_df = pd.read_excel(leave_file, sheet_name=leave_sheet)
-            special_df = pd.read_excel(special_file, sheet_name=special_sheet)
-            
-            # 这里添加实际的审批计算逻辑
-            # 示例: 计算审批时效
-            result_df = self.calculate_approval_time(main_df, employee_df, leave_df, special_df)
-            
-            # 保存结果
-            result_df.to_excel(output_path, index=False)
-            
-            self.progress["value"] = 100
-            self.column_text.insert(tk.END, f"分析完成！结果已保存到: {output_path}\n")
-        except Exception as e:
-            self.column_text.insert(tk.END, f"分析过程中出错: {str(e)}\n")
-            self.progress["value"] = 0
+        if not output_file:
+            return  # 用户取消保存
+        
+        merged_data = result['merged_data']
+        report1 = generate_report_1(merged_data)
+        
+        with pd.ExcelWriter(output_file) as writer:
+            merged_data.to_excel(writer, sheet_name='原始数据', index=False)
+            report1.to_excel(writer, sheet_name='按体系汇总', index=False)
+        
+        messagebox.showinfo("成功", f"报告已生成并保存到:\n{output_file}")
+    except Exception as e:
+        messagebox.showerror("错误", f"处理过程中出错:\n{str(e)}")
 
-    def calculate_approval_time(self, main_df, employee_df, leave_df, special_df):
-        # 1. 合并必要数据
-        result_df = main_df.copy()
-        
-        # 2. 计算审批时效（示例逻辑，请根据实际需求调整）
-        if '申请时间' in result_df.columns and '审批时间' in result_df.columns:
-            result_df['审批时效(小时)'] = (pd.to_datetime(result_df['审批时间']) - 
-                                     pd.to_datetime(result_df['申请时间'])).dt.total_seconds() / 3600
-        
-        # 3. 添加员工信息（示例）
-        if '员工ID' in result_df.columns and '员工ID' in employee_df.columns:
-            result_df = result_df.merge(employee_df, on='员工ID', how='left')
-        
-        # 4. 标记特殊节点（示例）
-        if '节点ID' in result_df.columns and '节点ID' in special_df.columns:
-            result_df = result_df.merge(special_df, on='节点ID', how='left')
-        
-        # 5. 处理假期影响（示例）
-        if '申请时间' in result_df.columns and '假期开始' in leave_df.columns:
-            # 这里可以添加假期影响的逻辑
-            pass
-        
-        # 返回计算结果
-        return result_df
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     root = tk.Tk()
-    app = ApprovalAnalysisApp(root)
+    root.title("审批计算工具")
+    
+    # 创建输入文件选择框架
+    input_frame = tk.Frame(root, padx=10, pady=10)
+    input_frame.pack(fill=tk.X)
+    
+    # 文件选择行
+    file_select_frame = tk.Frame(input_frame)
+    file_select_frame.pack(fill=tk.X)
+    
+    tk.Label(file_select_frame, text="输入文件:").pack(side=tk.LEFT)
+    input_entry = tk.Entry(file_select_frame, width=50)
+    input_entry.pack(side=tk.LEFT, padx=5)
+    browse_btn = tk.Button(file_select_frame, text="浏览", command=select_input_file)
+    browse_btn.pack(side=tk.LEFT)
+    
+    # Sheet要求说明
+    sheet_requirements = "要求Excel包含以下sheet：主表、附1 最新在职人员及所属组织清单、附2 方太春节假期、附3特殊节点合理时长"
+    tk.Label(input_frame, text=sheet_requirements, font=('Arial', 8), fg='gray').pack(anchor='w', pady=5)
+    
+    # 处理按钮
+    process_btn = tk.Button(root, text="开始处理", command=run_processing, padx=20, pady=5)
+    process_btn.pack(pady=10)
+    
     root.mainloop()

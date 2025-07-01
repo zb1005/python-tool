@@ -2,8 +2,8 @@ import pandas as pd
 from functools import partial
 
 # 定义常量
-RELATION_FILE_PATH = r'C:\Users\zhangbon\Desktop\制造研发变更对照表.XLSX'
-OUTPUT_FILE_PATH = r'C:\Users\zhangbon\Desktop\升版信息及差异.xlsx'
+RELATION_FILE_PATH = r'C:\Users\zhangbon\Desktop\000000我的事项\2025-06\研发变更错误数据识别\制造研发变更对照表.XLSX'
+OUTPUT_FILE_PATH = r'C:\Users\zhangbon\Desktop\000000我的事项\2025-06\研发变更错误数据识别\升版信息及差异.xlsx'
 VERSION_ORDER = {'0':0, 'A':1, 'B':2, 'C':3, 'D':4, 'E':5, 'F':6, 'G':7, 'H':8, 'I':9, 'J':10, 'K':11, 'L':12}
 
 # 数据加载函数
@@ -45,6 +45,8 @@ def analyze_upgrades(grouped_data):
     upgrade_records = []
     non_continuous_records = []
     diff_records = []
+    diff_研发_records = []
+
     
     for _, group in grouped_data:
         # 按工厂、父级物料编码、子级物料编码、计数器升序排序
@@ -81,6 +83,7 @@ def analyze_upgrades(grouped_data):
                         
                         # 记录升版类型
                         if is_continuous:
+                            upgrade_records.append(pd.concat([prev.to_frame().T, current.to_frame().T]))
                             if not change_id_match:
                                 diff_records.append({
                                     '工厂': prev['工厂'],
@@ -103,28 +106,49 @@ def analyze_upgrades(grouped_data):
                                     '新版更改号自': current['更改号自'],
                                     '差异类型': '非连续升版更改号不匹配'
                                 })
-
+    #找出upgrade_records中同一子级物料编码，研发ECN不同的项
+    upgrade_records_df=pd.concat(upgrade_records) if upgrade_records else None
+    for _,group in upgrade_records_df.groupby(['子级物料编码','研发ECN']):
+        if len(group['研发ECN'].unique())>1:
+            diff_研发_records.append(group)
     
     return (
         pd.concat(upgrade_records) if upgrade_records else None,
         pd.concat(non_continuous_records) if non_continuous_records else None,
-        pd.DataFrame(diff_records) if diff_records else None
-    )
+        pd.DataFrame(diff_records) if diff_records else None,
+        pd.DataFrame(diff_研发_records) if diff_研发_records else None
+    )   
 
 # 结果保存函数
-def save_results(continuous_df, non_continuous_df, diff_df, output_path):
+def identify_ecn_inconsistencies(data):
+    """识别同一父级物料编码和子级物料编码下研发ECN值不同的项"""
+    # 确保必要的列存在
+    required_cols = ['父级物料编码', '子级物料编码', '研发ECN']
+    if not set(required_cols).issubset(data.columns):
+        missing = [col for col in required_cols if col not in data.columns]
+        raise ValueError(f"数据缺少必要的列: {missing}")
+
+    # 筛选出同一父级物料编码和子级物料编码下研发ECN值不同的项
+    ecn_inconsistencies = data.groupby(['父级物料编码', '子级物料编码']).filter(lambda x: len(x['研发ECN'].unique()) > 1)
+    return ecn_inconsistencies
+    
+
+def save_results(continuous_df, non_continuous_df, diff_df,diff_研发_df, output_path):
+
     """保存分析结果到Excel文件"""
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         if continuous_df is not None:
-            continuous_df.to_excel(writer, sheet_name='变更数据', index=False)
+            continuous_df.to_excel(writer, sheet_name='升版数据', index=False)
         if non_continuous_df is not None:
             non_continuous_df.to_excel(writer, sheet_name='非连续升版数据', index=False)
         if diff_df is not None:
             diff_df.to_excel(writer, sheet_name='差异数据', index=False)
+        if diff_研发_df is not None:
+            diff_研发_df.to_excel(writer, sheet_name='差异数据-研发ECN', index=False)
     return output_path
 
 # 主函数
-def main(input_file_path=r"C:\Users\zhangbon\Desktop\PLM-MBOM数据核对表-20250618.xlsx"):
+def main(input_file_path=r"C:\Users\zhangbon\Desktop\000000我的事项\2025-06\研发变更错误数据识别\PLM-MBOM数据核对表-20250618.xlsx"):
     """主函数：执行完整的数据处理流程"""
     # 加载数据
     raw_data = load_excel(input_file_path)
@@ -135,14 +159,18 @@ def main(input_file_path=r"C:\Users\zhangbon\Desktop\PLM-MBOM数据核对表-202
     match_ecn = create_ecn_matcher(relation_data)
     data_with_ecn = filtered_data.assign(研发ECN=filtered_data.apply(match_ecn, axis=1))
     data_with_features = extract_version_features(data_with_ecn)
-    data_with_features.to_excel(r"C:\Users\zhangbon\Desktop\PLM-MBOM-有效-存在变更-匹配了研发ecn.xlsx", index=False)
+    data_with_features.to_excel(r"C:\Users\zhangbon\Desktop\000000我的事项\2025-06\研发变更错误数据识别\PLM-MBOM-有效-存在变更-匹配了研发ecn.xlsx", index=False)
+    # 识别ECN不一致项
+    data_with_ecn_check = identify_ecn_inconsistencies(data_with_features)
+    data_with_ecn_check.to_excel(r"C:\Users\zhangbon\Desktop\000000我的事项\2025-06\研发变更错误数据识别\同一父级物料编码下的同一子级物料编码存在不同研发ECN.xlsx", index=False)
     
     # 分组分析
     grouped = data_with_features.groupby(['工厂', '父级物料编码', '子级前12位'])
-    continuous, non_continuous, diffs = analyze_upgrades(grouped)
+    # 传入df参数并接收返回的四个值
+    continuous, non_continuous, diffs, diffs_研发 = analyze_upgrades(grouped)
     
     # 保存结果
-    output_path = save_results(continuous, non_continuous, diffs, OUTPUT_FILE_PATH)
+    output_path = save_results(continuous, non_continuous, diffs,diffs_研发, OUTPUT_FILE_PATH)
     return f'升版信息处理完成，结果已保存至"{output_path}"'
 
 if __name__ == "__main__":

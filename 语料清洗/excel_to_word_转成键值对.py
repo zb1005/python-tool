@@ -5,7 +5,8 @@ import os
 
 def excel_to_word(input_excel, output_word):
     # 读取Excel文件
-    df = pd.read_excel(input_excel)
+    df = pd.read_excel(input_excel, dtype=str)
+    df = df.fillna("")
 
     # 创建Word文档
     doc = Document()

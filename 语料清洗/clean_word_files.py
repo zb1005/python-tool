@@ -23,7 +23,10 @@ def clean_word_files(folder_path):
                     
                     # 清洗文本: 删除换行符和.0
                     cleaned_text = para.text.replace(r'\n', '').replace('.0', '')
-                    
+                    cleaned_text = cleaned_text.replace(',"Unnamed: 9":""', '')
+                    cleaned_text = cleaned_text.replace(',"Unnamed: 10":""', '')
+                    cleaned_text = cleaned_text.replace(',"Unnamed: 11":""', '')
+                    cleaned_text = cleaned_text.replace(',"Unnamed: 12":""', '')    
                     # 清空段落并添加清洗后的文本
                     para.text = cleaned_text
                     
@@ -43,7 +46,7 @@ if __name__ == '__main__':
     # 指定要处理的文件夹路径
     target_folder = os.path.dirname(os.path.abspath(__file__))  # 当前脚本所在文件夹
     # 或者手动指定文件夹路径
-    target_folder = r'C:\Users\zhangbon\Desktop\2025_06_12_AI知识库\AI知识库——20250703\批量维护模板—20250627\物料批量维护模板'
+    target_folder = r'C:\Users\zhangbon\Desktop\2025_06_12_AI知识库\AI知识库——20250703\数据消费—20250627'
     
     if os.path.exists(target_folder) and os.path.isdir(target_folder):
         clean_word_files(target_folder)

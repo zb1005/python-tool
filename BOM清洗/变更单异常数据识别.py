@@ -50,7 +50,7 @@ def analyze_upgrades(grouped_data):
     
     for _, group in grouped_data:
         # 按工厂、父级物料编码、子级物料编码、计数器升序排序
-        valid_group = group.dropna(subset=['版本顺序', '子级前12位', '子级最后一位'])
+        valid_group = group.dropna(subset=['版本顺序', '子级前12位', '子级最后一位']) 
         valid_group = valid_group.sort_values(by=['工厂', '父级物料编码', '子级物料编码', '计数器'])
         
         if len(valid_group) >= 2:

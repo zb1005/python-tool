@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 
 # 目标省份文件夹路径（根据用户实际路径调整）
-base_dir = Path(r"c:\Users\zhangbon\Desktop\python-tool\省份")
+base_dir = Path(r"C:\Users\zhangbon\Desktop\数据产权\知识产权整理稿\收入审核预测-更改版\省份")
 
 # 定义列名映射（前推n月 -> 具体月份）
 column_mapping = {
@@ -19,7 +19,8 @@ column_mapping = {
     "前推3个月审核金额(万元)": "2024年10月审核金额(万元)",
     "前推2个月审核金额(万元)": "2024年11月审核金额(万元)",
     "前推1个月审核金额(万元)": "2024年12月审核金额(万元)",
-    "预测金额(万元)": "2025年1月预测金额(万元)"
+    "预测金额(万元)": "2025年1月预测金额(万元)",
+    "预测金额": "2025年1月预测金额(万元)"
 }
 
 # 定义产品类型及分配比例（油烟机:灶具:洗碗机 = 15:10:4）
@@ -54,6 +55,15 @@ def process_province_excel(province_dir):
             # 新增：数值四舍五入到两位小数
             new_df[value_columns] = new_df[value_columns].round(2)
 
+            #新增：门店编码后四位替换为*（关键修改1）
+            new_df['门店编码'] = new_df['门店编码'].astype(str).str.slice(0, 2) + '****'
+
+            #新增：添加预测完成日期列（关键修改2）
+            if "省" in new_df.columns:
+                # 获取「省」列的索引，在其前插入新列
+                province_index = new_df.columns.get_loc("省")
+                new_df.insert(province_index, "预测完成日期", "2025年1月3日")
+
             # 新增：文本内容替换（遍历所有字符串列）
             for col in new_df.columns:
                 if new_df[col].dtype == 'object':  # 仅处理字符串列
@@ -84,3 +94,5 @@ def process_province_excel(province_dir):
 for province_dir in base_dir.iterdir():
     if province_dir.is_dir():
         process_province_excel(province_dir)
+
+

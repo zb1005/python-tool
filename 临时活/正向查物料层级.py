@@ -31,6 +31,8 @@ def forward_material_hierarchy(input_file, output_file, shaixuan_list):
     print(f"找到 {len(top_level_parents)} 个顶级父项")
     #引入了一个筛选，只对这部分进行分析
     top_level_parents = shaixuan_list  
+    print(len(top_level_parents))
+
     # 结果数据结构
     result_data = []
     max_level = 0  # 记录最大层级深度
@@ -38,35 +40,41 @@ def forward_material_hierarchy(input_file, output_file, shaixuan_list):
     # 处理每个顶级父项
     for parent in tqdm(top_level_parents, desc="处理顶级父项"):
         # 使用广度优先搜索(BFS)向下展开所有子项
-        queue = [(parent, [])]  # (当前物料, 路径)
+        queue = [(parent, [parent])]  # (当前物料, 完整路径)
         
         while queue:
             current_item, path = queue.pop(0)
             children = parent_child_map.get(current_item, [])
             
-            # 记录当前路径
-            row = {
-                '父项物料': current_item,
-                '父项物料名称': material_name_map.get(current_item, '')
-            }
-            for level, child in enumerate(path, 1):
-                row[f'{level}级子'] = child
-                row[f'{level}级子名称'] = material_name_map.get(child, '')
-            result_data.append(row)
-            
-            # 更新最大层级
-            if len(path) > max_level:
-                max_level = len(path)
-            
-            # 将子项加入队列
-            for child in children:
-                new_path = path + [child]
-                queue.append((child, new_path))
+            if not children:  # 没有子项，说明是最底层子项
+                # 记录完整路径
+                row = {}
+                for level, item in enumerate(path, 1):
+                    if level == 1:
+                        row[f'{level}级父'] = item
+                        row[f'{level}级父名称'] = material_name_map.get(item, '')
+                    else:
+                        row[f'{level-1}级子'] = item
+                        row[f'{level-1}级子名称'] = material_name_map.get(item, '')
+                
+                # 更新最大层级
+                if len(path) - 1 > max_level:
+                    max_level = len(path) - 1
+                
+                result_data.append(row)
+            else:
+                # 将子项加入队列
+                for child in children:
+                    new_path = path + [child]
+                    queue.append((child, new_path))
     
     # 统一所有行的列数
-    columns = ['父项物料', '父项物料名称']
-    for level in range(1, max_level + 1):
-        columns.extend([f'{level}级子', f'{level}级子名称'])
+    columns = []
+    for level in range(1, max_level + 2):
+        if level == 1:
+            columns.extend([f'{level}级父', f'{level}级父名称'])
+        else:
+            columns.extend([f'{level-1}级子', f'{level-1}级子名称'])
     
     # 创建结果DataFrame
     result_df = pd.DataFrame(result_data)
@@ -119,16 +127,15 @@ def forward_material_hierarchy(input_file, output_file, shaixuan_list):
     with pd.ExcelWriter(output_file) as writer:
         # 层级关系sheet
         result_df.to_excel(writer, sheet_name='层级关系', index=False)
-        
         # 最低级子项对照sheet
         bottom_child_df.to_excel(writer, sheet_name='最低级子项', index=False)
 
 # 使用示例
 if __name__ == "__main__":
     input_excel = r"C:\Users\zhangbon\Desktop\export-全量.XLSX"  # 替换为输入文件路径
-    output_excel = r"C:\Users\zhangbon\Desktop\正向物料层级结果-3.xlsx"  # 输出文件路径
+    output_excel = r"C:\Users\zhangbon\Desktop\正向物料层级结果-2.xlsx"  # 输出文件路径
     
-    筛选_excel = pd.read_excel(r'C:\Users\zhangbon\Desktop\工程产品清单0721.xlsx',sheet_name='Sheet4')
+    筛选_excel = pd.read_excel(r'C:\Users\zhangbon\Desktop\工程产品清单0721.xlsx',sheet_name='Sheet3')
     筛选_excel['产品编码'] = 筛选_excel['产品编码'].astype(str)
     shaixuan_list = 筛选_excel['产品编码'].tolist()
 

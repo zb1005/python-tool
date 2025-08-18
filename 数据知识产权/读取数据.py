@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # 读取原始Workbook.xlsx
-wb_df = pd.read_excel(r"C:\Users\zhangbon\Desktop\python-tool\Workbook.xlsx")
+wb_df = pd.read_excel(r"C:\Users\zhangbon\Desktop\Workbook-0815.xlsx")
 
 # 目标文件夹路径（根据实际路径调整）
 target_folder = r'C:\Users\zhangbon\Desktop\数据产权\知识产权整理稿\收入审核预测-更改版\省份'
@@ -35,5 +35,5 @@ result_df.rename(columns={'index': '数据名称'}, inplace=True)
 merged_df = pd.merge(wb_df, result_df, on='数据名称', how='left')
 
 # 输出到新Excel文件（避免覆盖原文件）
-merged_df.to_excel('Workbook_匹配结果.xlsx', index=False)
+merged_df.to_excel(r"C:\Users\zhangbon\Desktop\Workbook_算法匹配结果-0815.xlsx", index=False)
 print('匹配结果已输出至Workbook_匹配结果.xlsx')

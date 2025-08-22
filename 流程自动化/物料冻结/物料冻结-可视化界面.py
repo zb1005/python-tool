@@ -165,6 +165,10 @@ class MaterialFreezeGUI:
             
             result_df = base_df[["物料编码", "物料描述"]].copy()
             result_df = result_df.astype(str)
+            result_df['库存'] = 0
+            result_df['是否有未结工单'] = '未找到'
+            result_df['是否有未清采购订单'] = '未找到'
+            result_df['最后一次交易日期'] = '未找到'
             
             total_files = len(all_excel_files)
             
@@ -234,10 +238,13 @@ class MaterialFreezeGUI:
                     result_df[column] = '无'
             result_df = result_df[columns]
             result_df['是否可冻结'] = '/'
-            
+            result_df['库存'] = result_df['库存'].apply(lambda x : '无' if x == 0 else x).astype(str)
+            result_df['是否有未结工单'] = result_df['是否有未结工单'].apply(lambda x : '否' if x == '未找到' else x)
+            result_df['是否有未清采购订单'] = result_df['是否有未清采购订单'].apply(lambda x : '否' if x == '未找到' else x)
+            result_df['最后一次交易日期'] = result_df['最后一次交易日期'].apply(lambda x : '无交易' if x == '未找到' else x)
             # 计算是否可冻结
             for index, row in result_df.iterrows():
-                if row['库存'] == '无' and row['是否有未结工单'] == '否' and row['是否有未清采购订单'] == '否' and row['是否服务物料'] == '否' and (row['是否在生效MBOM中'] in ['否', '是否在生效MBOM中']) and (row['是否在生效SBOM中'] in ['否', '是否在生效SBOM中']) and (row['是否在生效XBOM中'] in ['无', '否', '是否在生效SBOM中']) and (row['是否被EBOM引用'] in ['否', '是，但其父级已冻结或停止生产']):
+                if row['库存'] == '无' and row['是否有未结工单'] == '否' and row['是否有未清采购订单'] == '否' and (row['是否在生效MBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否在生效SBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否在生效XBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否被EBOM引用'] in ['否', '是，但其父级已冻结或停止生产']):
                     result_df.loc[index, '是否可冻结'] = '是'
                 else:
                     result_df.loc[index, '是否可冻结'] = '否'
@@ -365,6 +372,7 @@ class MaterialFreezeGUI:
                     if '是，且其父级未冻结、未停止生产' in ebom_value:
                         if '是否被EBOM引用' in col_indices:
                             excel_row[col_indices['是否被EBOM引用']-1].fill = red_fill
+
                 
                 # 调整列宽
                 for column in ws.columns:
@@ -403,7 +411,7 @@ class MaterialFreezeGUI:
         if not excel_files:
             return None, None
             
-        target_files = [file for file in excel_files if '物料冻结情况查询' in file]
+        target_files = [file for file in excel_files if '物料冻结' in file]
         
         if not target_files:
             return None, excel_files
@@ -422,61 +430,86 @@ class MaterialFreezeGUI:
     def calculate_inventory(self, result_df, current_df):
         current_df['非限制使用的库存'] = pd.to_numeric(current_df['非限制使用的库存'], errors='coerce').fillna(0)
         current_df['Trans./Tfr'] = pd.to_numeric(current_df['Trans./Tfr'], errors='coerce').fillna(0)
-        
         inventory_mapping = {}
         for _, row in current_df.iterrows():
             key = row['物料编码']
             inventory_mapping[key] = inventory_mapping.get(key, 0) + row['非限制使用的库存'] + row['Trans./Tfr']
-            
-        result_df['库存'] = result_df['物料编码'].map(inventory_mapping)
-        result_df['库存'] = result_df['库存'].fillna('无')
-        result_df['库存'] = result_df['库存'].apply(lambda x: '无' if x == 0 else x)
+        #只有result_df的物料编码在inventory_mapping中，才对这一行进行map操作，但是不要修改result_df的大小
+        for index,row in result_df.iterrows():
+            if row['物料编码'] in inventory_mapping:
+                result_df.at[index,'库存'] = inventory_mapping[row['物料编码']] + row['库存']
         return result_df
         
     def compare_material_codes_worklist(self, result_df, current_df):
         current_material_codes = set(current_df['物料编号'])
-        result_df['是否有未结工单'] = result_df['物料编码'].apply(lambda x: '是' if x in current_material_codes else '否')
+        for index,row in result_df.iterrows():
+            if row['物料编码'] in current_material_codes:
+                result_df.at[index,'是否有未结工单'] = '是'
         return result_df
         
     def compare_material_codes_buylist(self, result_df, current_df):
         current_material_codes = set(current_df['物料编码'])
-        result_df['是否有未清采购订单'] = result_df['物料编码'].apply(lambda x: '是' if x in current_material_codes else '否')
+        for index,row in result_df.iterrows():
+            if row['物料编码'] in current_material_codes:
+                result_df.at[index,'是否有未清采购订单'] = '是'
         return result_df
         
-    def MBOM_mapping(self, result_df, current_df):
+    def MBOM_mapping(self,result_df,current_df):
         MBOM_mapping = {}
-        for _, row in current_df.iterrows():
-            key = row['子项物料编码']
-            if key not in MBOM_mapping:
-                MBOM_mapping[key] = row['是否在生效制造BOM中']
-        result_df['是否在生效MBOM中'] = result_df['物料编码'].map(MBOM_mapping).fillna('无')
+        for index, row in current_df.iterrows():
+            if row['是否在生效制造BOM中'] == '是，且其父级未冻结、未停止生产' and MBOM_mapping.get(row['子项物料编码'],0) == 0:
+                MBOM_mapping[row['子项物料编码']] = '是，且其父级未冻结、未停止生产'
+            if row['是否在生效制造BOM中'] == '是，但其父级已冻结或停止生产' and MBOM_mapping.get(row['子项物料编码'],0) == 0:
+                MBOM_mapping[row['子项物料编码']] = '是，但其父级已冻结或停止生产'
+            if row['是否在生效制造BOM中'] == '否' and MBOM_mapping.get(row['子项物料编码'],0) == 0:
+                MBOM_mapping[row['子项物料编码']] = '否'
+        result_df['是否在生效MBOM中'] = result_df['物料编码'].map(MBOM_mapping)
+
         return result_df
         
-    def SBOM_mapping(self, result_df, current_df):
+    def SBOM_mapping(self,result_df,current_df):
         SBOM_mapping = {}
-        for _, row in current_df.iterrows():
-            key = row['子项物料编码']
-            if key not in SBOM_mapping:
-                SBOM_mapping[key] = row['是否在生效服务BOM中']
-        result_df['是否在生效SBOM中'] = result_df['物料编码'].map(SBOM_mapping).fillna('无')
+        for index, row in current_df.iterrows():
+            if row['是否在生效服务BOM中'] == '是，且其父级未冻结、未停止生产' and SBOM_mapping.get(row['子项物料编码'],0) == 0:
+                SBOM_mapping[row['子项物料编码']] = '是，且其父级未冻结、未停止生产'
+                continue
+            if row['是否在生效服务BOM中'] == '是，但其父级已冻结或停止生产' and SBOM_mapping.get(row['子项物料编码'],0) == 0:
+                SBOM_mapping[row['子项物料编码']] = '是，但其父级已冻结或停止生产'
+                continue
+            if row['是否在生效服务BOM中'] == '否' and SBOM_mapping.get(row['子项物料编码'],0) == 0:
+                SBOM_mapping[row['子项物料编码']] = '否'
+                continue
+        result_df['是否在生效SBOM中'] = result_df['物料编码'].map(SBOM_mapping) 
         return result_df
         
-    def EBOM_mapping(self, result_df, current_df):
+    def EBOM_mapping(self,result_df,current_df):
         EBOM_mapping = {}
-        for _, row in current_df.iterrows():
-            key = row['子项物料编码']
-            if key not in EBOM_mapping:
-                EBOM_mapping[key] = row['备注']
-        result_df['是否被EBOM引用'] = result_df['物料编码'].map(EBOM_mapping).fillna('无')
+        for index, row in current_df.iterrows():
+            if row['备注'] == '是，且其父级未冻结、未停止生产' and EBOM_mapping.get(row['子项物料编码'],0) == 0:
+                EBOM_mapping[row['子项物料编码']] = '是，且其父级未冻结、未停止生产'
+                continue
+            if row['备注'] == '是，但其父级已冻结或停止生产' and EBOM_mapping.get(row['子项物料编码'],0) == 0:
+                EBOM_mapping[row['子项物料编码']] = '是，但其父级已冻结或停止生产'
+                continue
+            if row['备注'] == '否' and EBOM_mapping.get(row['子项物料编码'],0) == 0:
+                EBOM_mapping[row['子项物料编码']] = '否'
+                continue
+        result_df['是否被EBOM引用'] = result_df['物料编码'].map(EBOM_mapping) 
         return result_df
         
-    def XBOM_mapping(self, result_df, current_df):
+    def XBOM_mapping(self,result_df,current_df):
         XBOM_mapping = {}
-        for _, row in current_df.iterrows():
-            key = row['子项物料编码']
-            if key not in XBOM_mapping:
-                XBOM_mapping[key] = row['是否在生效销售BOM中']
-        result_df['是否在生效XBOM中'] = result_df['物料编码'].map(XBOM_mapping).fillna('无')
+        for index, row in current_df.iterrows():
+            if row['是否在生效销售BOM中'] == '是，且其父级未冻结、未停止生产' and XBOM_mapping.get(row['子项物料编码'],0) == 0:
+                XBOM_mapping[row['子项物料编码']] = '是，且其父级未冻结、未停止生产'
+                continue
+            if row['是否在生效销售BOM中'] == '是，但其父级已冻结或停止生产' and XBOM_mapping.get(row['子项物料编码'],0) == 0:
+                XBOM_mapping[row['子项物料编码']] = '是，但其父级已冻结或停止生产'      
+                continue
+            if row['是否在生效销售BOM中'] == '否' and XBOM_mapping.get(row['子项物料编码'],0) == 0:
+                XBOM_mapping[row['子项物料编码']] = '否'
+                continue
+        result_df['是否在生效XBOM中'] = result_df['物料编码'].map(XBOM_mapping) 
         return result_df
         
     def last_trade_date(self, result_df, current_df):
@@ -489,18 +522,17 @@ class MaterialFreezeGUI:
             dates = [d for d in [row['过帐日期'], row['凭证日期']] if pd.notna(d)]
             if dates:
                 last_trade_date_mapping[key] = max(dates).strftime('%Y/%m/%d')
-            else:
-                last_trade_date_mapping[key] = '无'
-                
-        result_df['最后一次交易日期'] = result_df['物料编码'].map(last_trade_date_mapping).fillna('无')
+        for index,row in result_df.iterrows():
+            if row['物料编码'] in last_trade_date_mapping:
+                result_df.at[index,'最后一次交易日期'] = last_trade_date_mapping[row['物料编码']]
         return result_df
         
     def service_product(self, result_df, current_df):
         service_product_mapping = {}
         replace_product_mapping = {}
         replace_relation_mapping = {}
-        current_df['替换物料'] = current_df['替换物料'].map(lambda x: '无' if x == 'nan' else str(int(float(x))))
-        current_df['替换关系描述'] = current_df['替换关系描述'].map(lambda x: '无' if x == 'nan' else x)
+        current_df['替换物料'] = current_df['替换物料'].map(lambda x: '/' if x == 'nan' else str(int(float(x))))
+        current_df['替换关系描述'] = current_df['替换关系描述'].map(lambda x: '/' if x == 'nan' else x)
         
         for _, row in current_df.iterrows():
             key = row['物料编码']
@@ -510,12 +542,12 @@ class MaterialFreezeGUI:
             if '替换关系描述' in current_df.columns:
                 replace_relation_mapping[row['物料编码']] = row['替换关系描述']
                 
-        result_df['是否服务物料'] = result_df['物料编码'].map(service_product_mapping).fillna('无')
+        result_df['是否服务物料'] = result_df['物料编码'].map(service_product_mapping).fillna('没匹配到服务物料')
         
         if '替换物料' in current_df.columns:
-            result_df['替换物料'] = result_df['物料编码'].map(replace_product_mapping).fillna('无')
+            result_df['替换物料'] = result_df['物料编码'].map(replace_product_mapping).fillna('/')
         if '替换关系描述' in current_df.columns:
-            result_df['替换关系描述'] = result_df['物料编码'].map(replace_relation_mapping).fillna('无')
+            result_df['替换关系描述'] = result_df['物料编码'].map(replace_relation_mapping).fillna('/')
 
         return result_df
 

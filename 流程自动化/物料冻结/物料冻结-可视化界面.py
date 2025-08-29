@@ -244,10 +244,11 @@ class MaterialFreezeGUI:
             result_df['最后一次交易日期'] = result_df['最后一次交易日期'].apply(lambda x : '无交易' if x == '未找到' else x)
             # 计算是否可冻结
             for index, row in result_df.iterrows():
-                if row['库存'] == '无' and row['是否有未结工单'] == '否' and row['是否有未清采购订单'] == '否' and (row['是否在生效MBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否在生效SBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否在生效XBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否被EBOM引用'] in ['否', '是，但其父级已冻结或停止生产']):
+                if row['库存'] == '无' and row['是否有未结工单'] == '否' and row['是否有未清采购订单'] == '否' and (row['是否在生效MBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否在生效SBOM中'] in ['否', '是，但其父级已冻结或停止生产']) and (row['是否在生效XBOM中'] in ['无','否', '是，但其父级已冻结或停止生产']) and (row['是否被EBOM引用'] in ['否', '是，但其父级已冻结或停止生产']):
                     result_df.loc[index, '是否可冻结'] = '是'
                 else:
                     result_df.loc[index, '是否可冻结'] = '否'
+                    print
                     
             self.result_df = result_df
             
@@ -531,7 +532,7 @@ class MaterialFreezeGUI:
         service_product_mapping = {}
         replace_product_mapping = {}
         replace_relation_mapping = {}
-        current_df['替换物料'] = current_df['替换物料'].map(lambda x: '/' if x == 'nan' else str(int(float(x))))
+        current_df['替换物料'] = current_df['替换物料'].map(lambda x: '/' if x == 'nan' else str(int(float(x))) if '.0' in x else str(x))
         current_df['替换关系描述'] = current_df['替换关系描述'].map(lambda x: '/' if x == 'nan' else x)
         
         for _, row in current_df.iterrows():

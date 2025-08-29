@@ -14,7 +14,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # 导入预处理前置优化版的核心函数
-from 终版_预处理前置优化版 import DataPreprocessor, compare_preprocessed_datasets, generate_detailed_report_optimized
+from 一致性核对_预处理前置优化版 import DataPreprocessor, compare_preprocessed_datasets, generate_detailed_report_optimized
 
 class SignalEmitter(QObject):
     """信号发射器"""
@@ -213,6 +213,7 @@ class DataComparisonApp(QMainWindow):
         
         self.key_input = QLineEdit()
         self.key_input.setPlaceholderText("输入主键列名，用逗号分隔")
+        self.key_input.textChanged.connect(self.normalize_key_input)
         
         key_layout.addLayout(source_columns_layout)
         key_layout.addLayout(target_columns_layout)
@@ -382,12 +383,18 @@ class DataComparisonApp(QMainWindow):
         )
         self.start_btn.setEnabled(ready)
     
+    def normalize_key_input(self, text):
+        """自动将中文逗号转为英文逗号"""
+        if '，' in text:
+            normalized_text = text.replace('，', ',')
+            self.key_input.setText(normalized_text)
+    
     def start_comparison(self):
         """开始比对"""
         if not self.validate_inputs():
             return
         
-        # 获取主键列
+        # 获取主键列（已自动转换中文逗号）
         key_text = self.key_input.text().strip()
         self.key_columns = [col.strip() for col in key_text.split(',')]
         

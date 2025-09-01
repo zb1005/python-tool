@@ -22,7 +22,7 @@ def calculate_work_duration(start_time, end_time, holidays):
 def process_approval_data():
     # 读取Q3相关Excel文件（路径需根据实际Q3数据调整）
     base_df = pd.read_excel(r"E:\000000我的事项\2025-07\1131\00-审批数据模板-0729汇总v1.1.xlsx",sheet_name="1、已批准（不含拒绝）-计算周期")
-    holiday_df = pd.read_excel(r"E:\000000我的事项\2025-07\1131\2025非工作日清单-截至Q3.xlsx", engine='openpyxl')
+    holiday_df = pd.read_excel(r"E:\000000我的事项\2025-08\1131统计\2025非工作日清单-截至0901.xlsx", engine='openpyxl')
     # special_node_df = pd.read_excel(r"E:\000000我的事项\2025-07\1131\特殊节点时长基准-250729.xlsx", engine='openpyxl')
     print(base_df.columns)
 

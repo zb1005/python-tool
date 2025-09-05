@@ -60,7 +60,6 @@ def process_approval_data():
     
     # 8. 匹配节点合理审批时长，默认值为1
     base_df['节点审批时长'] = base_df['流程节点拼接'].map(lambda x: node_duration_map.get(x, 1))
-
     # 9. 计算节点审批延期时长
     base_df['节点审批延期时长(实际工作时长-节点审批时长）'] = base_df['该节点审批工作时长'] - base_df['节点审批时长']
     base_df['节点审批延期时长(实际工作时长-节点审批时长）'] = base_df['节点审批延期时长(实际工作时长-节点审批时长）'].apply(lambda x: max(0, round(x, 2)))

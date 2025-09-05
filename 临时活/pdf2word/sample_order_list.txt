@@ -1,0 +1,12 @@
+# PDF文件顺序列表
+# 每行一个PDF文件路径，按顺序排列
+# 注释以#开头
+
+C:\Users\zhangbon\Desktop\5月\“行孝”是个人的事情，为什么公司要倡导和要求？.pdf
+C:\Users\zhangbon\Desktop\5月\是否可以通过弱化考核、强化发心的方式来减少内耗？.pdf
+C:\Users\zhangbon\Desktop\5月\在生活上或工作上有什么方式可以让杂念更少？.pdf
+C:\Users\zhangbon\Desktop\5月\如何将方太文化真正地在门店推进下去？.pdf
+C:\Users\zhangbon\Desktop\5月\面对各方面的压力时，如何能做到业务和文化更好的结合.pdf
+C:\Users\zhangbon\Desktop\5月\怎样才能静下心来进行学习和读书？.pdf
+C:\Users\zhangbon\Desktop\5月\先读哪本经典能够更好地坚持下去？.pdf
+C:\Users\zhangbon\Desktop\5月\智慧科技发展，对全人类来说是助力还是阻力？.pdf

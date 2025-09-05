@@ -75,6 +75,21 @@ def process_approval_data():
         'holiday_dates': holidays,
         'node_duration_map': node_duration_map
     }
+def calculate_quantile(base_df):
+    df = pd.DataFrame()
+    df['该节点审批工作时长_规整'] = base_df['该节点审批工作时长_规整']
+    #计算该节点审批工作时长_规整的90分位数
+    df['该节点审批工作时长_规整_90分位数'] = df['该节点审批工作时长_规整'].quantile(0.9)
+    #计算该节点审批工作时长_规整的95分位数
+    df['该节点审批工作时长_规整_95分位数'] = df['该节点审批工作时长_规整'].quantile(0.95)
+    #计算该节点审批工作时长_规整的99分位数
+    df['该节点审批工作时长_规整_99分位数'] = df['该节点审批工作时长_规整'].quantile(0.99)
+    #计算该节点审批工作时长_规整的中位数
+    df['该节点审批工作时长_规整_中位数'] = df['该节点审批工作时长_规整'].median()
+    #计算该节点审批工作时长_规整的均值
+    df['该节点审批工作时长_规整_均值'] = df['该节点审批工作时长_规整'].mean()
+    return df
+
 
 if __name__ == '__main__':
     result = process_approval_data()
@@ -85,8 +100,10 @@ if __name__ == '__main__':
     print(result['merged_data'].columns)
     merged_data = result['merged_data']
     merged_data.to_excel(r'E:\000000我的事项\2025-08\1131统计\审批结果.xlsx', index=False)
-    print("处理后的数据已保存到审批结果1.xlsx")
-    
+    #计算该节点审批工作时长_规整的分位数
+    df = calculate_quantile(merged_data)
+    df.to_excel(r'E:\000000我的事项\2025-08\1131统计\审批结果分位数计算结果.xlsx', index=False)
+  
     print("报告已生成并保存到审批结果.xlsx")
 
 

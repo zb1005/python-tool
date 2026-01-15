@@ -100,7 +100,7 @@ def get_filter_rules(system: str, data_type: str, key_column: str) -> List[Calla
                     df.get('物料编码', '').str.startswith(('10', '1512', '1513', '159902'), na=False) |
                     (df.get('是否关键件', '') == 'X') |
                     (df.get('是否附件', '') == 'X') |
-                    (df.get('是否独立包装', '') == 'X')
+                    ((df.get('是否独立包装', '') == 'X')&(df.get('物料编码','').str.startswith('11',na=False)))
                 ]
             ]
         elif system == "CSM":
@@ -146,7 +146,7 @@ def get_filter_rules(system: str, data_type: str, key_column: str) -> List[Calla
                 lambda df: df[
                     df.get('物料编码', '').str.startswith(('10', '17020000'), na=False) |
                     (df.get('是否服务配件', '') == 'X') |
-                    (df.get('是否独立包装', '') == 'X')
+                    ((df.get('是否独立包装', '') == 'X')&(df.get('物料编码','').str.startswith('11',na=False)))
                 ]
             ]
         elif system == "数据中台":
@@ -157,7 +157,7 @@ def get_filter_rules(system: str, data_type: str, key_column: str) -> List[Calla
                     (df.get('物料编码', '').str.startswith(('12', '13', '15'), na=False) & (df.get('是否服务配件', '') == 'X'))
                 ]
             ]
-        elif system == "FIKS平台":
+        elif system == "FIKS":
             # FIKS平台物料筛选规则：10开头
             return [
                 lambda df: df[df.get('物料编码', '').str.startswith('10', na=False)]
@@ -174,7 +174,17 @@ def get_filter_rules(system: str, data_type: str, key_column: str) -> List[Calla
                 lambda df: df[
                     (df.get('物料编码', '').str.startswith('10', na=False) & df.get('项目阶段', '').isin(project_stages)) |
                     df.get('物料编码', '').str.startswith(('91', '1512', '1513', '1701', '1702', '159902', '159903'), na=False) |
-                    (df.get('是否独立包装', '') == 'X')
+                    ((df.get('是否独立包装', '') == 'X')&(df.get('物料编码','').str.startswith('11',na=False)))
+                ]
+            ]
+        elif system == "DRP":
+            # DRP物料筛选规则：10开头且项目阶段为特定阶段，或91,1512,1513开头，或独立包装
+            project_stages = ['TR5', '验证阶段', 'TR6', 'ADCP', '发布阶段', 'TR7', '结项阶段']
+            return [
+                lambda df: df[
+                    (df.get('物料编码', '').str.startswith('10', na=False) & df.get('项目阶段', '').isin(project_stages)) |
+                    df.get('物料编码', '').str.startswith(('91', '1512', '1513'), na=False) |
+                    ((df.get('是否独立包装', '') == 'X')&(df.get('物料编码','').str.startswith('11',na=False)))
                 ]
             ]
     
